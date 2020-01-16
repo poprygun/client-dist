@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+data:
+  default.conf: |
+    server {
+        listen       80;
+        server_name  localhost;
+
+        location / {
+            root   /usr/share/nginx/html;
+            autoindex on;
+            index  index.html index.htm;
+        }
+
+        #files to download will be available at http://localhost:30800/downloads/
+
+        location /download/ {
+            root   /usr/share/nginx/html/downloads;
+            autoindex on;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }
+---    
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: my-nginx-deploy
+  name: my-nginx-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: my-nginx-deploy
+  template:
+    metadata:
+      labels:
+        run: my-nginx-deploy
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: nginx-storage
+          mountPath: /usr/share/nginx/html   
+        - name: nginx-configs
+          mountPath: /etc/nginx/conf.d            
+      volumes:
+      - name: nginx-storage
+        persistentVolumeClaim:
+          claimName: nginx-volume-claim
+      - name: nginx-configs
+        configMap:
+          name: nginx-config               
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-nginx-deploy
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+    nodePort: 30800
+  type: NodePort  
+  selector:
+    run: my-nginx-deploy
+status:
+  loadBalancer: {}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nginx-volume-claim
+spec:
+  storageClassName: slow
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi     
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nginx-volume
+  labels:
+    type: local
+spec:
+  storageClassName: slow
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/Users/ashumilov/projects/dhl/client-dist" 
